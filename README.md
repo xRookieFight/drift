@@ -19,15 +19,21 @@
 Drift is a browser that tries to get out of your way. Tabs live in a quiet sidebar, pages sit on a soft rounded card, and two tabs can share the window in split view. The whole interface is plain HTML and CSS drawn by Servo itself, so theming it is just writing CSS.
 
 > [!WARNING]
-> Drift is in early development and nothing is usable yet. Servo is still maturing too, so some sites will render incorrectly or not at all. Please report those with the site compatibility template.
+> Drift is young and so is Servo. Many sites work well, some render incorrectly or not at all, and file uploads are not supported yet. Please report broken sites with the site compatibility template.
 
 ## Showcase
 
-Screenshots from the real app land here with v0.1.0. No mockups.
+<p align="center">
+  <img src="docs/assets/showcase-dark.png" alt="Drift in dark mode with servo.org and Wikipedia side by side in split view">
+</p>
+
+<p align="center">
+  <img src="docs/assets/showcase-light.png" alt="Drift in light mode showing rust-lang.org">
+</p>
+
+Captured from the real app with `drift --screenshot`. The black squares on Wikipedia are icons Servo cannot draw yet.
 
 ## Features
-
-Planned for v0.1.0:
 
 - Vertical tabs in a sidebar, with the address bar and navigation built in
 - Split view with two tabs side by side and a draggable divider
