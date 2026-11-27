@@ -1,0 +1,18 @@
+[package]
+name = "drift"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A calm, Zen-inspired web browser built on Servo"
+license = "MPL-2.0"
+repository = "https://github.com/xRookieFight/drift"
+readme = "README.md"
+keywords = ["browser", "servo", "web-browser"]
+categories = ["gui"]
+publish = false
+
+[dependencies]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

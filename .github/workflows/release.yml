@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build
+        required: true
+
+permissions:
+  contents: write
+  packages: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/xrookiefight/drift-build-env:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes:
+        - /:/host
+      # AppImage tooling wants FUSE, extract-and-run sidesteps that inside containers
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - name: Free runner disk
+        run: rm -rf /host/usr/share/dotnet /host/usr/local/lib/android /host/opt/ghc /host/opt/hostedtoolcache/CodeQL || true
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        run: packaging/linux/package.sh "${TAG#v}"
+
+      - name: Release notes
+        run: packaging/release-notes.sh "${TAG#v}" > dist/NOTES.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Drift ${{ env.TAG }}
+          body_path: dist/NOTES.md
+          prerelease: ${{ startsWith(env.TAG, 'v0.') }}
+          files: |
+            dist/*.tar.gz
+            dist/*.AppImage
+            dist/SHA256SUMS

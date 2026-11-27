@@ -1,0 +1,37 @@
+name: Site compatibility
+description: A website does not render or work correctly
+labels: [site-compat]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is broken
+    validations:
+      required: true
+  - type: dropdown
+    id: servoshell
+    attributes:
+      label: Does it also break in servoshell?
+      description: Servo's own demo browser. If yes, the bug most likely belongs upstream.
+      options:
+        - "Not checked"
+        - "Yes, also broken there"
+        - "No, only in Drift"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Drift version
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Drift
+GenericName=Web Browser
+Comment=A calm web browser built on Servo
+Exec=drift %U
+Icon=dev.drift.Drift
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=drift

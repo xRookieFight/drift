@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Drift itself is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: If a single website renders wrong, use the site compatibility template instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Press ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Drift version
+      description: Release tag or commit hash.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distro and desktop
+      placeholder: Fedora 44, GNOME on Wayland
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Run with RUST_LOG=debug and paste the relevant part.
+      render: text
