@@ -1,0 +1,9 @@
+/* Injected into every web page as a user stylesheet.
+ *
+ * Servo's user agent sheet still draws focus outlines on :focus, so a plain mouse click on a
+ * link or field leaves a ring behind. Other browsers only show it for keyboard focus
+ * (:focus-visible). This brings that behaviour back, keyboard users keep their rings.
+ * !important because user styles otherwise lose to author :focus rules. */
+:focus:not(:focus-visible) {
+  outline: none !important;
+}

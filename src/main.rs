@@ -2,8 +2,10 @@
 
 mod app;
 mod bridge;
+mod compositor;
 mod dialogs;
 mod favicon;
+mod history;
 mod keys;
 mod keyutils;
 mod layout;

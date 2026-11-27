@@ -5,7 +5,9 @@
 //! Core to UI: `drift.update(state)` with a [`UiState`], evaluated in the UI webview.
 
 use serde::{Deserialize, Serialize};
+use servo::WebViewId;
 
+use crate::compositor::FloatSpec;
 use crate::dialogs::DialogView;
 use crate::layout::CssRect;
 use crate::tabs::{Side, Tab, TabId};
@@ -56,9 +58,50 @@ pub enum Command {
     DismissUpdate,
     /// Quit and start again, used to finish an update.
     Restart,
+    /// UI boxes (CSS pixels) that must be drawn above the pages and get their input,
+    /// e.g. dialogs, the address panel and menus. An empty list clears them.
+    SetOverlays {
+        floats: Vec<FloatSpec>,
+    },
+    /// Opens the floating address panel, `new_tab` decides where its answer opens.
+    OpenPanel {
+        new_tab: bool,
+    },
+    /// Typing in the address panel. Answered with `drift.suggestions(seq, ...)`.
+    Suggest {
+        query: String,
+        seq: u64,
+    },
+    /// Navigate like Navigate, but into a fresh tab.
+    OpenInNewTab {
+        input: String,
+    },
+    WindowDrag,
+    WindowMinimize,
+    WindowToggleMaximize,
+    WindowClose,
+    ClearHistory,
+    RemoveHistory {
+        url: String,
+    },
+    ShowHistory,
+}
+
+/// Who sent a bridge command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    Ui,
+    /// A tab, which may only send [`Command::allowed_from_pages`] and only while it shows one
+    /// of our own drift:// pages.
+    Page(WebViewId),
 }
 
 impl Command {
+    /// Commands the history page may send from inside a tab. Everything else is sidebar only.
+    pub fn allowed_from_pages(&self) -> bool {
+        matches!(self, Command::ClearHistory | Command::RemoveHistory { .. })
+    }
+
     /// Parses the query part of a bridge URL (percent encoded JSON).
     pub fn from_query(query: &str) -> Result<Self, String> {
         let decoded = percent_decode(query);
@@ -172,6 +215,16 @@ mod tests {
                 input: "c++ çay".into()
             })
         );
+    }
+
+    #[test]
+    fn pages_get_only_history_commands() {
+        assert!(Command::ClearHistory.allowed_from_pages());
+        assert!(Command::RemoveHistory { url: "x".into() }.allowed_from_pages());
+        assert!(!Command::Navigate { input: "x".into() }.allowed_from_pages());
+        assert!(!Command::WindowClose.allowed_from_pages());
+        assert!(!Command::Restart.allowed_from_pages());
+        assert!(!Command::InstallUpdate.allowed_from_pages());
     }
 
     #[test]

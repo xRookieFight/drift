@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>History</title>
+  <style>
+    :root {
+      --bg: #f6f4f9; --text: #24212b; --dim: #6c6778; --line: rgba(36, 33, 43, 0.08);
+      --hover: rgba(36, 33, 43, 0.05); --accent: #7a5cd6; --field: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #2a2833; --text: #f1eff6; --dim: #a29eb0; --line: rgba(255, 255, 255, 0.08);
+        --hover: rgba(255, 255, 255, 0.05); --accent: #a48cf0; --field: rgba(255, 255, 255, 0.06);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body { font: 14px/1.4 system-ui, "Cantarell", "Noto Sans", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    h1 { font-size: 26px; font-weight: 600; margin: 0; flex: 1; }
+    input {
+      width: 260px; height: 34px; padding: 0 12px; border-radius: 9px;
+      border: 1px solid var(--line); background: var(--field); color: var(--text);
+      font: inherit; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    button {
+      height: 34px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--line);
+      background: none; color: var(--text); font: inherit;
+    }
+    button:hover { background: var(--hover); }
+    h2 { font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase;
+         letter-spacing: 0.04em; margin: 28px 0 6px; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 8px; }
+    li:hover { background: var(--hover); }
+    .time { width: 44px; flex: none; color: var(--dim); font-size: 12px; }
+    a { flex: 1; min-width: 0; color: var(--text); text-decoration: none; display: flex; gap: 10px; }
+    a .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    a .u { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); font-size: 12px; flex: 1; }
+    li .x { height: 24px; width: 24px; padding: 0; border: 0; opacity: 0; color: var(--dim); }
+    li:hover .x { opacity: 1; }
+    .empty { color: var(--dim); text-align: center; margin-top: 80px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>History</h1>
+      <input id="q" type="search" placeholder="Search history" autofocus>
+      <button id="clear">Clear all</button>
+    </header>
+    <div id="list"></div>
+  </main>
+  <script>
+    "use strict";
+    // The core hands the history over through driftHistory.show(), there is no URL that
+    // serves it, so web pages have no way to read it.
+    let entries = [];
+    const list = document.getElementById("list");
+    const q = document.getElementById("q");
+
+    function send(cmd) {
+      fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd))).catch(() => {});
+    }
+
+    function dayLabel(d) {
+      const today = new Date();
+      const yesterday = new Date(today.getTime() - 86400000);
+      const same = (a, b) => a.toDateString() === b.toDateString();
+      if (same(d, today)) return "Today";
+      if (same(d, yesterday)) return "Yesterday";
+      return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+    }
+
+    function render() {
+      const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const shown = entries.filter((e) => {
+        const hay = (e.title + " " + e.url).toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
+      list.innerHTML = "";
+      if (!shown.length) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = entries.length ? "Nothing matches" : "Pages you visit show up here";
+        list.append(p);
+        return;
+      }
+      let current = null;
+      let ul = null;
+      for (const e of shown) {
+        const d = new Date(e.last_visit * 1000);
+        const label = dayLabel(d);
+        if (label !== current) {
+          current = label;
+          const h = document.createElement("h2");
+          h.textContent = label;
+          ul = document.createElement("ul");
+          list.append(h, ul);
+        }
+        const li = document.createElement("li");
+        const time = document.createElement("span");
+        time.className = "time";
+        time.textContent = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        const a = document.createElement("a");
+        a.href = e.url;
+        const t = document.createElement("span");
+        t.className = "t";
+        t.textContent = e.title || e.url;
+        const u = document.createElement("span");
+        u.className = "u";
+        u.textContent = e.url.replace(/^https?:\/\/(www\.)?/, "");
+        a.append(t, u);
+        const x = document.createElement("button");
+        x.className = "x";
+        x.title = "Remove from history";
+        x.textContent = "✕";
+        x.onclick = () => send({ cmd: "remove_history", url: e.url });
+        li.append(time, a, x);
+        ul.append(li);
+      }
+    }
+
+    q.addEventListener("input", render);
+    document.getElementById("clear").onclick = () => {
+      if (confirm("Clear all browsing history?")) send({ cmd: "clear_history" });
+    };
+
+    window.driftHistory = {
+      show(next) {
+        entries = next;
+        render();
+      },
+    };
+    render();
+  </script>
+</body>
+</html>

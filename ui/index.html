@@ -7,6 +7,7 @@
 </head>
 <body>
   <aside id="sidebar">
+    <div id="sidebar-head" class="drag"></div>
     <ul id="tabs"></ul>
     <div id="update" hidden>
       <div class="update-text"></div>
@@ -18,20 +19,38 @@
     <button id="new-tab" class="wide"><span class="glyph"></span><span>New Tab</span></button>
   </aside>
 
-  <header id="topbar">
+  <header id="topbar" class="drag">
     <button id="back" class="icon" title="Back (Alt+Left)"></button>
     <button id="forward" class="icon" title="Forward (Alt+Right)"></button>
-    <button id="reload" class="icon" title="Reload (Ctrl+R)"></button>
-    <form id="address-form" autocomplete="off">
-      <input id="address" type="text" spellcheck="false" placeholder="Search or enter address">
-    </form>
+    <button id="reload" class="icon" title="Reload (Ctrl+R)">
+      <span class="when-idle"></span>
+      <span class="spinner when-busy"></span>
+    </button>
+    <div id="urlbox" title="Search or enter address (Ctrl+L)">
+      <span class="lock"></span>
+      <span id="url-text"></span>
+    </div>
     <button id="split" class="icon" title="Split view (Ctrl+Shift+S)"></button>
+    <div id="window-controls">
+      <button id="win-min" class="icon" title="Minimize"></button>
+      <button id="win-max" class="icon" title="Maximize"></button>
+      <button id="win-close" class="icon" title="Close"></button>
+    </div>
     <div id="loading-bar"></div>
   </header>
 
   <div id="card"></div>
   <div id="focus-ring"></div>
   <div id="divider"><span></span></div>
+
+  <div id="panel" hidden>
+    <div class="panel-field">
+      <span class="glyph"></span>
+      <input id="panel-input" type="text" spellcheck="false" autocomplete="off"
+             placeholder="Search or enter address">
+    </div>
+    <ul id="suggestions"></ul>
+  </div>
 
   <div id="overlay" hidden>
     <div id="dialog"></div>

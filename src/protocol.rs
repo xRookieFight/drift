@@ -14,26 +14,27 @@ use servo::protocol_handler::{
 };
 use servo::{EventLoopWaker, WebViewId};
 
-use crate::bridge::Command;
+use crate::bridge::{Command, Origin};
 
 static UI: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
 pub const SCHEME: &str = "drift";
 pub const UI_URL: &str = "drift://ui/index.html";
 pub const NEW_TAB_URL: &str = "drift://ui/newtab.html";
+pub const HISTORY_URL: &str = "drift://ui/history.html";
 
 /// Shared with the handler so it can tell the sidebar apart from web content.
 pub type UiWebViewId = Arc<Mutex<Option<WebViewId>>>;
 
 pub struct DriftProtocol {
-    commands: Mutex<Sender<Command>>,
+    commands: Mutex<Sender<(Origin, Command)>>,
     waker: Box<dyn EventLoopWaker>,
     ui_webview: UiWebViewId,
 }
 
 impl DriftProtocol {
     pub fn new(
-        commands: Sender<Command>,
+        commands: Sender<(Origin, Command)>,
         waker: Box<dyn EventLoopWaker>,
         ui_webview: UiWebViewId,
     ) -> Self {
@@ -45,23 +46,27 @@ impl DriftProtocol {
     }
 
     fn bridge(&self, request: &Request, query: Option<&str>) -> Response {
-        // yeah, this check is the whole security story of the bridge: web pages can point an
-        // <img> or fetch at drift://ui/bridge, but only the sidebar webview may drive the browser
-        let from_ui = {
-            let ui = self.ui_webview.lock().map(|id| *id).unwrap_or(None);
-            ui.is_some() && request.target_webview_id == ui
+        // yeah, this is the whole security story of the bridge: any page can point an <img> or
+        // fetch at drift://ui/bridge. The sidebar may send anything, a tab only the handful of
+        // commands its own drift:// page needs, and the core checks that tab's URL again
+        let Some(sender) = request.target_webview_id else {
+            return refuse("bridge calls need a webview");
         };
-        if !from_ui {
-            log::warn!("rejected bridge call from {:?}", request.target_webview_id);
-            return Response::network_error(NetworkError::ResourceLoadError(
-                "bridge is only available to the browser UI".into(),
-            ));
-        }
+        let ui = self.ui_webview.lock().map(|id| *id).unwrap_or(None);
+        let origin = if ui == Some(sender) {
+            Origin::Ui
+        } else {
+            Origin::Page(sender)
+        };
 
         match Command::from_query(query.unwrap_or_default()) {
             Ok(command) => {
+                if origin != Origin::Ui && !command.allowed_from_pages() {
+                    log::warn!("rejected {command:?} from page {sender:?}");
+                    return refuse("bridge is only available to the browser UI");
+                }
                 if let Ok(tx) = self.commands.lock() {
-                    let _ = tx.send(command);
+                    let _ = tx.send((origin, command));
                 }
                 self.waker.wake();
                 body_response(request, ContentType::json(), b"{\"ok\":true}".to_vec())
@@ -122,6 +127,10 @@ fn body_response(request: &Request, mime: ContentType, body: Vec<u8>) -> Respons
     response.headers.typed_insert(mime);
     *response.body.lock() = ResponseBody::Done(body);
     response
+}
+
+fn refuse(why: &str) -> Response {
+    Response::network_error(NetworkError::ResourceLoadError(why.into()))
 }
 
 fn not_found() -> Response {

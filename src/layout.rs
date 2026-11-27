@@ -41,6 +41,19 @@ impl Rect {
         Rect::new(self.x, window_height - self.y - self.h, self.w, self.h)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.w <= 0 || self.h <= 0
+    }
+
+    /// Part of this rect that lies inside `other`, empty when they don't touch.
+    pub fn intersect(&self, other: &Rect) -> Rect {
+        let x0 = self.x.max(other.x);
+        let y0 = self.y.max(other.y);
+        let x1 = (self.x + self.w).min(other.x + other.w);
+        let y1 = (self.y + self.h).min(other.y + other.h);
+        Rect::new(x0, y0, (x1 - x0).max(0), (y1 - y0).max(0))
+    }
+
     /// Same rect in CSS pixels, which is what the UI webview thinks in.
     pub fn to_css(self, scale: f32) -> CssRect {
         CssRect {
@@ -58,6 +71,17 @@ pub struct CssRect {
     pub y: f32,
     pub w: f32,
     pub h: f32,
+}
+
+impl CssRect {
+    /// Back to physical pixels, rounded outwards so a floating UI rect never loses its edge.
+    pub fn to_physical(self, scale: f32) -> Rect {
+        let x0 = (self.x * scale).floor() as i32;
+        let y0 = (self.y * scale).floor() as i32;
+        let x1 = ((self.x + self.w) * scale).ceil() as i32;
+        let y1 = ((self.y + self.h) * scale).ceil() as i32;
+        Rect::new(x0, y0, x1 - x0, y1 - y0)
+    }
 }
 
 pub fn clamp_ratio(ratio: f32) -> f32 {
@@ -135,6 +159,16 @@ mod tests {
         assert!(p[0].w as f32 >= (c.w - 8) as f32 * MIN_RATIO - 1.0);
         assert_eq!(clamp_ratio(f32::NAN), 0.5);
         assert_eq!(clamp_ratio(2.0), MAX_RATIO);
+    }
+
+    #[test]
+    fn intersect_clips_and_detects_misses() {
+        let a = Rect::new(0, 0, 100, 100);
+        assert_eq!(
+            a.intersect(&Rect::new(50, 50, 100, 100)),
+            Rect::new(50, 50, 50, 50)
+        );
+        assert!(a.intersect(&Rect::new(200, 0, 10, 10)).is_empty());
     }
 
     #[test]

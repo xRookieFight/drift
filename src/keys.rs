@@ -18,6 +18,10 @@ pub enum Action {
     ZoomOut,
     ZoomReset,
     Fullscreen,
+    ReopenTab,
+    /// Ctrl+1 to Ctrl+9, 9 meaning the last tab.
+    GoToTab(usize),
+    ShowHistory,
 }
 
 /// Matches on the physical key (`Code`), so shortcuts stay put on non-QWERTY layouts.
@@ -38,6 +42,17 @@ pub fn shortcut(event: &KeyboardEvent) -> Option<Action> {
         (true, false, false, Code::Tab) => Action::NextTab,
         (true, true, false, Code::Tab) => Action::PrevTab,
         (true, true, false, Code::KeyS) => Action::ToggleSplit,
+        (true, true, false, Code::KeyT) => Action::ReopenTab,
+        (true, false, false, Code::KeyH) => Action::ShowHistory,
+        (true, false, false, Code::Digit1) => Action::GoToTab(1),
+        (true, false, false, Code::Digit2) => Action::GoToTab(2),
+        (true, false, false, Code::Digit3) => Action::GoToTab(3),
+        (true, false, false, Code::Digit4) => Action::GoToTab(4),
+        (true, false, false, Code::Digit5) => Action::GoToTab(5),
+        (true, false, false, Code::Digit6) => Action::GoToTab(6),
+        (true, false, false, Code::Digit7) => Action::GoToTab(7),
+        (true, false, false, Code::Digit8) => Action::GoToTab(8),
+        (true, false, false, Code::Digit9) => Action::GoToTab(9),
         (true, _, false, Code::Equal | Code::NumpadAdd) => Action::ZoomIn,
         (true, false, false, Code::Minus | Code::NumpadSubtract) => Action::ZoomOut,
         (true, false, false, Code::Digit0 | Code::Numpad0) => Action::ZoomReset,
@@ -90,6 +105,22 @@ mod tests {
         assert_eq!(
             shortcut(&down(Code::ArrowLeft, Modifiers::ALT)),
             Some(Action::Back)
+        );
+    }
+
+    #[test]
+    fn tab_shortcuts() {
+        assert_eq!(
+            shortcut(&down(Code::KeyT, Modifiers::CONTROL | Modifiers::SHIFT)),
+            Some(Action::ReopenTab)
+        );
+        assert_eq!(
+            shortcut(&down(Code::Digit3, Modifiers::CONTROL)),
+            Some(Action::GoToTab(3))
+        );
+        assert_eq!(
+            shortcut(&down(Code::KeyH, Modifiers::CONTROL)),
+            Some(Action::ShowHistory)
         );
     }
 
