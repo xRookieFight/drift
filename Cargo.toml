@@ -12,7 +12,31 @@ categories = ["gui"]
 publish = false
 
 [dependencies]
+base64 = "0.22"
+dirs = "7.0"
+dpi = "0.1"
+euclid = "0.22"
+glow = "0.17.0"
+headers = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+log = "0.4"
+include_dir = "0.7"
+mime_guess = "2.0.5"
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "logging", "std", "tls12"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+servo = { version = "0.8.0", features = ["brotli-compression-stream", "subtlecrypto", "webgl", "webgpu", "media-gstreamer"] }
+url = "2.5"
+winit = "0.30.13"
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Optimized but quick to relink, for running the browser while working on it.
+# Servo is unusably slow in debug builds, and full LTO takes minutes per change.
+[profile.local]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true

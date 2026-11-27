@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>New Tab</title>
+  <style>
+    :root { --bg: #f6f4f9; --mark: #d8d2e6; --text: #8d879b; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #2a2833; --mark: #3b3846; --text: #77728a; }
+    }
+    html, body { margin: 0; height: 100%; background: var(--bg); }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      font: 14px system-ui, "Cantarell", "Noto Sans", sans-serif;
+      color: var(--text);
+      user-select: none;
+    }
+    svg { width: 72px; height: 72px; }
+    path { fill: none; stroke: var(--mark); stroke-width: 18; stroke-linecap: round; }
+  </style>
+</head>
+<body>
+  <svg viewBox="40 64 176 128" aria-hidden="true">
+    <path d="M52 104c30-24 60-24 76 0s46 24 76 0"/>
+    <path d="M52 152c30-24 60-24 76 0s46 24 76 0"/>
+  </svg>
+  <div>Search or enter an address</div>
+</body>
+</html>
