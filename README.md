@@ -54,15 +54,16 @@ sudo dnf install gcc-c++ clang clang-libs llvm cmake libtool gperf python3-devel
   freetype-devel fontconfig-devel harfbuzz-devel expat-devel glib2-devel dbus-devel \
   libunwind-devel ncurses-devel libjpeg-turbo-devel \
   gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-bad-free-devel
-cargo run --release
+cargo run --profile local    # optimized build without LTO, quicker to relink
 ```
 
 The first build compiles all of Servo, so expect it to take a while and use around 20 GB of disk.
 
-If you would rather not install anything, use the build environment image:
+If you would rather not install the -devel packages, build inside the build environment image. The binary in target/local then runs on any Fedora host that has the runtime libraries:
 
 ```sh
-podman run --rm -it -v "$PWD:/work:Z" ghcr.io/xrookiefight/drift-build-env cargo build --release
+scripts/cargo-in-container.sh build --profile local
+target/local/drift
 ```
 
 ## Roadmap

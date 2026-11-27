@@ -13,7 +13,7 @@ Run these locally, CI runs the same ones:
 ```sh
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo test --profile local
 ```
 
 If you touched the UI (anything under `ui/`), run the app and check both light and dark mode. Attach a screenshot to the pull request.
