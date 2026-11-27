@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Custom title bar: window controls in the top bar, drag and double click to maximize, resize from the edges
+- Floating address panel (Ctrl+L, Ctrl+T or a click on the address) with suggestions from history and inline site name completion
+- Browsing history with a history page (Ctrl+H), search, per entry removal and clear all
+- Loading spinners on the reload button and on loading tabs, shown the moment a navigation starts
+- Reopen closed tab (Ctrl+Shift+T) and Ctrl+1 to Ctrl+9 to jump between tabs
+- Proper app icon on Linux, also for X11 and XWayland windows
+
+### Fixed
+
+- Clicking a link or field no longer leaves a focus ring behind, rings stay for keyboard focus
+- Page dialogs and select popups now appear above the page instead of behind it
+- Icons in the dark theme are white instead of grey
+- The installer no longer creates icon and MIME caches in your home directory
+
 ## [0.1.0] - 2026-11-27
 
 ### Added

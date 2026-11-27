@@ -28,6 +28,9 @@ src/
   keys.rs       browser shortcuts, checked before input reaches webviews
   keyutils.rs   winit to Servo keyboard event mapping (adapted from servoshell)
   theme.rs      light/dark from the XDG portal (winit reports nothing on Wayland)
+  compositor.rs mixes floating UI boxes (panel, dialogs, menus) over the pages on the CPU
+  history.rs    visit history, frecency suggestions and inline site completion
+  content.css   user stylesheet injected into every page (focus ring fix)
   updater.rs    GitHub Releases check, verified download and atomic swap
 ui/             sidebar UI, plain HTML/CSS/JS, no framework, embedded at build time
 packaging/      desktop file, icon, release scripts
@@ -39,13 +42,21 @@ docker/         build environment image (published to GHCR)
 
 Every webview (the UI and each visible tab) renders into its own OffscreenRenderingContext. `Running::paint` blits the UI full window first, then each pane at its layout rect. The UI draws the backdrop, the card shadow, the split divider and the focus ring around where the panes land, using the rects the core sends in UiState.
 
+### Floating UI
+
+The UI webview is drawn *under* the pages, so anything that must cover a page (the address panel, page dialogs, select popups, context menus) is reported by the UI with `set_overlays` as a list of boxes (rect, radius, shadow, scrim). Each frame `Running::paint_overlays` reads that region back from the window and from the UI framebuffer and `compositor::composite` mixes them: rounded corners and the shadow show the live page, the scrim dims it. Input inside a reported box goes to the UI. New floating UI must report its box in `reportFloats()` in ui/app.js, nothing else is needed on the Rust side.
+
+### Window chrome
+
+The window has no server side decorations. The top bar carries minimize, maximize and close, empty parts of the top bar and the sidebar head send `window_drag`, and `Running::resize_direction` turns the outer 5 px into resize handles.
+
 ### Input routing
 
 `hit_test` picks the pane under the pointer, everything else goes to the UI webview. A mouse press captures the target until release, which is what makes divider dragging work. Keyboard goes to the UI or the focused tab depending on the last click, Ctrl+L and friends move it. While a page dialog is open all input goes to the UI.
 
 ### Bridge
 
-UI to core: `fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd)))`. The handler only accepts requests whose target webview is the UI webview, so pages cannot drive the browser. Core to UI: `drift.update(state)` evaluated in the UI webview, at most once per event loop turn.
+UI to core: `fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd)))`. The sidebar may send any command. A tab may only send the commands in `Command::allowed_from_pages` (history page actions), and `Running::accepts` checks again that the tab really shows drift://ui/history.html. History never has a URL of its own, the core pushes it into the history page with `driftHistory.show()`, so web pages cannot read it. Core to UI: `drift.update(state)` evaluated in the UI webview, at most once per event loop turn.
 
 ### Updates
 
@@ -70,7 +81,7 @@ packaging/linux/install.sh [binary]    # per-user install to ~/.local, --uninsta
 
 Without the -devel packages: `scripts/cargo-in-container.sh build --profile local` builds in the GHCR image, the binary in target/local runs on a Fedora host that has the runtime libs (gstreamer, mesa).
 
-`--screenshot PATH` (left out of --help on purpose) waits for the focused page to load, saves the window as PNG and quits. Use it for docs/assets and smoke tests, it works on every compositor.
+`--screenshot PATH` (left out of --help on purpose) waits for the visible pages to load, saves the window as PNG and quits. Use it for docs/assets and smoke tests, it works on every compositor. Two env hooks only act in screenshot mode: `DRIFT_DEBUG_CLICKS="x,y;x,y"` clicks window pixels once the page settles, `DRIFT_DEBUG_UI_JS='...'` runs a snippet in the UI webview (for example to open the panel and type into it).
 
 ## Conventions
 

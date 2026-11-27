@@ -37,11 +37,13 @@ Captured from the real app with `drift --screenshot`. The black squares on Wikip
 
 - Vertical tabs in a sidebar, with the address bar and navigation built in
 - Split view with two tabs side by side and a draggable divider
-- Address bar and navigation in a slim top bar above the page
+- Address bar and navigation in a slim top bar, with its own window controls
+- A floating address panel with history suggestions and site name completion
+- History page with search
 - Light and dark themes that follow the system
 - Session restore
 - Built in updates from GitHub Releases, verified before they are installed
-- Keyboard first: <kbd>Ctrl</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>L</kbd>, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
+- Keyboard first: <kbd>Ctrl</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>L</kbd>, <kbd>Ctrl</kbd>+<kbd>H</kbd>, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>, <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
 
 See the [roadmap](#roadmap) for what comes after.
 
