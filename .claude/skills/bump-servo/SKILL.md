@@ -13,4 +13,5 @@ Servo's embedding API still changes between releases, so a bump is a deliberate 
 4. Sync native deps: diff `python/servo/platform/linux_packages/dnf/dnf_base.txt` at the new tag against `docker/build-env.Dockerfile` and the README Fedora list. Update both if it changed.
 5. Fix compile errors, keep the changes local to the Servo facing modules (`app.rs`, `protocol.rs`, delegate code). `layout.rs` and `session.rs` must not need changes.
 6. Verify: fmt, clippy, test, then run the app and load the smoke sites (wikipedia.org, github.com, duckduckgo.com, servo.org).
-7. Update AGENTS.md if any architecture note changed, add a CHANGELOG entry, commit as `Update Servo to X.Y.Z`.
+7. Re-check the advisory ignores in deny.toml, they are all Servo transitive. Drop the ones the bump fixed.
+8. Update AGENTS.md if any architecture note changed, add a CHANGELOG entry, commit as `Update Servo to X.Y.Z`.

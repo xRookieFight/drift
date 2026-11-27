@@ -4,6 +4,17 @@ all-features = true
 [advisories]
 version = 2
 yanked = "warn"
+# All three come in through Servo and can only move with a Servo bump (see the bump-servo
+# skill). Re-check them on every bump and drop the entry once the fixed version lands.
+ignore = [
+  # rsa timing side channel, used by Servo's WebCrypto implementation
+  { id = "RUSTSEC-2023-0071", reason = "transitive via servo-script-webcrypto, no fixed rsa release yet" },
+  # bundled SQLite, only exploitable by opening a database whose -wal an attacker wrote,
+  # Drift's profile directory is not writable by web content
+  { id = "RUSTSEC-2026-0459", reason = "transitive via servo storage, profile files are not attacker writable" },
+  # cookie crate private cookies, only reached through Servo's webdriver server, which Drift never starts
+  { id = "RUSTSEC-2026-0594", reason = "transitive via webdriver, not used by Drift" },
+]
 
 [licenses]
 version = 2
@@ -19,6 +30,7 @@ allow = [
   "Zlib",
   "Unicode-3.0",
   "CC0-1.0",
+  "CDLA-Permissive-2.0",
   "BSL-1.0",
 ]
 
