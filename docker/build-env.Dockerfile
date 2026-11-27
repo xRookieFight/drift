@@ -1,7 +1,7 @@
 # Build environment for Drift: Fedora plus everything Servo needs to compile.
 # Package list mirrors servo/python/servo/platform/linux_packages/dnf/dnf_base.txt,
 # keep them in sync when bumping Servo.
-FROM registry.fedoraproject.org/fedora:44
+FROM docker.io/library/fedora:44
 
 LABEL org.opencontainers.image.source="https://github.com/xRookieFight/drift"
 LABEL org.opencontainers.image.description="Build environment for the Drift browser (Servo deps + Rust)"
