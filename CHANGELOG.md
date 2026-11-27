@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-27
+
 ### Added
 
 - Servo 0.8 based browser shell with one window and any number of tabs
@@ -19,3 +21,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - --theme and --no-update-check options
 - Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+L, Ctrl+R, Ctrl+Tab, Ctrl+Shift+S, Alt+Left/Right, zoom, F11
 - Project scaffold, documentation, CI, release pipeline and build environment image
+
+[Unreleased]: https://github.com/xRookieFight/drift/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/xRookieFight/drift/releases/tag/v0.1.0
