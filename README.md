@@ -31,15 +31,26 @@ Planned for v0.1.0:
 
 - Vertical tabs in a sidebar, with the address bar and navigation built in
 - Split view with two tabs side by side and a draggable divider
+- Address bar and navigation in a slim top bar above the page
 - Light and dark themes that follow the system
 - Session restore
+- Built in updates from GitHub Releases, verified before they are installed
 - Keyboard first: <kbd>Ctrl</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>L</kbd>, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
 
 See the [roadmap](#roadmap) for what comes after.
 
 ## Install
 
-Prebuilt Linux builds (tarball and AppImage) are published on the [releases page](https://github.com/xRookieFight/drift/releases) once v0.1.0 ships.
+Grab the tarball or the AppImage from the [releases page](https://github.com/xRookieFight/drift/releases).
+
+From the tarball, install for your user (no root needed):
+
+```sh
+tar xf drift-*-x86_64-linux.tar.gz && cd drift-*-x86_64-linux
+./install.sh ./drift
+```
+
+Drift checks for new releases once a day and offers to update itself from the sidebar. Updates are verified against the release's SHA256SUMS before they replace anything. Start with `--no-update-check` to turn that off.
 
 ## Build from source
 

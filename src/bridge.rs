@@ -51,6 +51,11 @@ pub enum Command {
         #[serde(default)]
         value: Option<serde_json::Value>,
     },
+    /// Download and swap in the release announced in [`UiState::update`].
+    InstallUpdate,
+    DismissUpdate,
+    /// Quit and start again, used to finish an update.
+    Restart,
 }
 
 impl Command {
@@ -117,6 +122,18 @@ pub struct UiState<'a> {
     pub immersive: bool,
     /// The dialog or picker the UI should show on top of everything, if any.
     pub dialog: Option<DialogView>,
+    /// A newer release, and how far installing it got.
+    pub update: Option<UpdateView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct UpdateView {
+    pub version: String,
+    /// Release page, for the notes.
+    pub page: String,
+    /// available, downloading, ready or failed
+    pub status: &'static str,
+    pub error: Option<String>,
 }
 
 impl UiState<'_> {

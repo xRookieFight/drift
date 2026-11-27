@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -31,7 +31,7 @@ use winit::keyboard::ModifiersState;
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
-use crate::bridge::{Command, SplitView, UiState};
+use crate::bridge::{Command, SplitView, UiState, UpdateView};
 use crate::dialogs::Dialogs;
 use crate::favicon;
 use crate::keys::{self, Action};
@@ -41,6 +41,7 @@ use crate::omnibox;
 use crate::protocol::{self, DriftProtocol, NEW_TAB_URL, UiWebViewId};
 use crate::session::{self, Session};
 use crate::tabs::{Side, TabId, Tabs};
+use crate::updater;
 
 const LINE_HEIGHT: f32 = 76.0;
 const SESSION_SAVE_INTERVAL: Duration = Duration::from_secs(3);
@@ -70,12 +71,15 @@ pub struct Config {
     pub screenshot: Option<PathBuf>,
     /// Forced theme, None follows the desktop.
     pub theme: Option<crate::theme::Preference>,
+    /// Look for a newer release on GitHub at most once a day.
+    pub update_check: bool,
 }
 
 pub struct App {
     config: Config,
     proxy: EventLoopProxy<Wake>,
     running: Option<Rc<Running>>,
+    relaunch: Option<PathBuf>,
 }
 
 impl App {
@@ -84,7 +88,13 @@ impl App {
             config,
             proxy,
             running: None,
+            relaunch: None,
         }
+    }
+
+    /// Set when the user asked to restart into a freshly installed update.
+    pub fn relaunch(&self) -> Option<&PathBuf> {
+        self.relaunch.as_ref()
     }
 }
 
@@ -139,6 +149,13 @@ struct Running {
     theme_applied: Cell<bool>,
     last_ui_push: Cell<Instant>,
     forced_theme: Option<crate::theme::Preference>,
+    waker: Waker,
+    update_target: Option<updater::Target>,
+    update_sender: Sender<updater::Event>,
+    update_events: Receiver<updater::Event>,
+    update: RefCell<Option<UpdateView>>,
+    release: RefCell<Option<updater::Release>>,
+    restart: Cell<bool>,
 }
 
 impl ApplicationHandler<Wake> for App {
@@ -183,6 +200,9 @@ impl ApplicationHandler<Wake> for App {
     fn exiting(&mut self, _: &ActiveEventLoop) {
         if let Some(running) = self.running.take() {
             running.save_session(true);
+            if running.restart.get() {
+                self.relaunch = running.update_target.as_ref().map(|t| t.path().to_owned());
+            }
             // tear down while the event loop and display connection still exist
             drop(running);
         }
@@ -219,6 +239,13 @@ impl Running {
             .map_err(|e| format!("GL current: {e:?}"))?;
 
         let waker = Waker(proxy);
+        let (update_tx, update_rx) = channel();
+        let update_target = updater::Target::detect();
+        if config.update_check
+            && let Some(target) = update_target.clone()
+        {
+            updater::spawn_check(target, update_tx.clone(), Box::new(waker.clone()));
+        }
         let (tx, rx) = channel();
         let ui_id: UiWebViewId = Arc::new(Mutex::new(None));
         let mut protocols = ProtocolRegistry::default();
@@ -234,7 +261,7 @@ impl Running {
         let servo = ServoBuilder::default()
             .opts(opts)
             .protocol_registry(protocols)
-            .event_loop_waker(Box::new(waker))
+            .event_loop_waker(Box::new(waker.clone()))
             .build();
         servo.setup_logging();
 
@@ -288,6 +315,13 @@ impl Running {
                 closing: Cell::new(false),
                 screenshot: config.screenshot.clone(),
                 forced_theme: config.theme,
+                waker: waker.clone(),
+                update_target: update_target.clone(),
+                update_sender: update_tx.clone(),
+                update_events: update_rx,
+                update: RefCell::new(None),
+                release: RefCell::new(None),
+                restart: Cell::new(false),
                 started: Instant::now(),
                 last_load_change: Cell::new(Instant::now()),
                 theme: Cell::new(Theme::Light),
@@ -332,6 +366,9 @@ impl Running {
         self.servo.spin_event_loop();
         while let Ok(command) = self.commands.try_recv() {
             self.handle_command(command);
+        }
+        while let Ok(event) = self.update_events.try_recv() {
+            self.handle_update_event(event);
         }
         self.flush_ui();
         self.save_session(false);
@@ -981,7 +1018,52 @@ impl Running {
                 self.mark_ui_dirty();
                 self.window.request_redraw();
             }
+            Command::InstallUpdate => {
+                let release = self.release.borrow().clone();
+                if let (Some(release), Some(target)) = (release, self.update_target.clone()) {
+                    self.set_update_status("downloading", None);
+                    updater::spawn_install(
+                        release,
+                        target,
+                        self.update_sender.clone(),
+                        Box::new(self.waker.clone()),
+                    );
+                }
+            }
+            Command::DismissUpdate => {
+                *self.update.borrow_mut() = None;
+                self.mark_ui_dirty();
+            }
+            Command::Restart => {
+                self.restart.set(true);
+                self.closing.set(true);
+            }
         }
+    }
+
+    fn handle_update_event(&self, event: updater::Event) {
+        match event {
+            updater::Event::Available(release) => {
+                *self.update.borrow_mut() = Some(UpdateView {
+                    version: release.version.clone(),
+                    page: release.page.clone(),
+                    status: "available",
+                    error: None,
+                });
+                *self.release.borrow_mut() = Some(release);
+            }
+            updater::Event::Ready => self.set_update_status("ready", None),
+            updater::Event::Failed(err) => self.set_update_status("failed", Some(err)),
+        }
+        self.mark_ui_dirty();
+    }
+
+    fn set_update_status(&self, status: &'static str, error: Option<String>) {
+        if let Some(view) = self.update.borrow_mut().as_mut() {
+            view.status = status;
+            view.error = error;
+        }
+        self.mark_ui_dirty();
     }
 
     fn close_tab(self: &Rc<Self>, id: TabId) {
@@ -1045,6 +1127,7 @@ impl Running {
                 card: state.content.to_css(scale),
                 immersive: state.immersive,
                 dialog: dialogs.current(),
+                update: self.update.borrow().clone(),
             };
             ui.to_script()
         };

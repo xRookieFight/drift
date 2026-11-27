@@ -233,6 +233,28 @@ body.loading #loading-bar {
 }
 .wide:hover { background: var(--hover); color: var(--text); }
 
+/* ---- update notice -------------------------------------------------------------------- */
+
+#update {
+  margin: 0 2px 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--selected);
+  box-shadow: var(--selected-shadow);
+}
+#update[hidden] { display: none; }
+#update .update-text { margin-bottom: 8px; }
+#update .update-text small { display: block; color: var(--text-dim); margin-top: 2px; }
+#update .update-actions { display: flex; justify-content: flex-end; gap: 6px; }
+#update button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--hover);
+}
+#update button.primary { background: var(--accent); color: #fff; }
+#update button:disabled { opacity: 0.6; }
+
 /* ---- content card, drawn behind the page panes -------------------------------------------- */
 
 #card {

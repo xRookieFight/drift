@@ -14,5 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Page dialogs: alert, confirm, prompt, select popups and the context menu
 - Light and dark themes that follow the desktop, read from the XDG portal on Wayland
 - Session restore and a persistent profile in ~/.local/share/drift
+- Self updates from GitHub Releases, checked daily and verified against SHA256SUMS
+- Per-user install script (packaging/linux/install.sh), shipped in the release tarball
+- --theme and --no-update-check options
 - Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+L, Ctrl+R, Ctrl+Tab, Ctrl+Shift+S, Alt+Left/Right, zoom, F11
 - Project scaffold, documentation, CI, release pipeline and build environment image

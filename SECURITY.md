@@ -14,6 +14,6 @@ You can expect an acknowledgement within a week. Once a fix is ready, a release 
 
 ## Scope
 
-In scope: the Drift shell, its `drift://` pages and the bridge between the UI and the core, session and profile storage, and the release artifacts.
+In scope: the Drift shell, its `drift://` pages and the bridge between the UI and the core, session and profile storage, the self updater, and the release artifacts.
 
 Bugs in the Servo engine itself (rendering, JavaScript, networking) should be reported to the Servo project as described in [their security policy](https://github.com/servo/servo/security/policy). If you are unsure where a bug lives, report it here and we will forward it.

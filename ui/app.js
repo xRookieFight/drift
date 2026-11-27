@@ -27,6 +27,7 @@ const el = {
   ring: $("focus-ring"),
   divider: $("divider"),
   overlay: $("overlay"),
+  update: $("update"),
   dialog: $("dialog"),
 };
 
@@ -130,8 +131,40 @@ function render() {
   }
 
   renderTabs();
+  renderUpdate();
   renderDialog();
 }
+
+// ---- update notice ----------------------------------------------------------------------------
+
+function renderUpdate() {
+  const u = state.update;
+  el.update.hidden = !u;
+  if (!u) return;
+  const text = el.update.querySelector(".update-text");
+  const go = el.update.querySelector(".update-go");
+  const later = el.update.querySelector(".update-later");
+  const lines = {
+    available: [`Drift ${u.version} is available`, "Downloads in the background"],
+    downloading: [`Downloading Drift ${u.version}`, "You can keep browsing"],
+    ready: [`Drift ${u.version} is installed`, "Restart to start using it"],
+    failed: ["Update failed", u.error || "Try again later"],
+  }[u.status] || ["", ""];
+  text.textContent = lines[0];
+  const small = document.createElement("small");
+  small.textContent = lines[1];
+  text.append(small);
+  go.textContent = { available: "Update", downloading: "Updating", ready: "Restart", failed: "Retry" }[u.status];
+  go.disabled = u.status === "downloading";
+  later.hidden = u.status === "downloading";
+}
+
+el.update.querySelector(".update-go").addEventListener("click", () => {
+  const u = state && state.update;
+  if (!u) return;
+  send({ cmd: u.status === "ready" ? "restart" : "install_update" });
+});
+el.update.querySelector(".update-later").addEventListener("click", () => send({ cmd: "dismiss_update" }));
 
 // ---- tabs: click, middle click, ctrl+click to split, drag to reorder ----------------------
 

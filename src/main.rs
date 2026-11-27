@@ -12,6 +12,7 @@ mod protocol;
 mod session;
 mod tabs;
 mod theme;
+mod updater;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -27,6 +28,7 @@ Options:
   --no-restore       Start without restoring the last session
   --profile <DIR>    Keep cookies, storage and the session in DIR
   --theme <THEME>    light, dark or auto (default: follow the desktop)
+  --no-update-check  Do not look for new releases on GitHub
   -h, --help         Show this help
   -V, --version      Show the version
 ";
@@ -53,13 +55,44 @@ fn main() -> ExitCode {
         }
     };
     let mut app = app::App::new(config, event_loop.create_proxy());
-    match event_loop.run_app(&mut app) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("drift: {err}");
-            ExitCode::FAILURE
+    if let Err(err) = event_loop.run_app(&mut app) {
+        eprintln!("drift: {err}");
+        return ExitCode::FAILURE;
+    }
+    if let Some(path) = app.relaunch() {
+        relaunch(path);
+    }
+    ExitCode::SUCCESS
+}
+
+/// Replaces this process with the freshly installed binary. Only returns if exec failed.
+fn relaunch(path: &std::path::Path) {
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(path)
+        .args(relaunch_args(std::env::args().skip(1)))
+        .exec();
+    eprintln!("drift: could not restart into {}: {err}", path.display());
+}
+
+/// Options to carry over into the restarted process. The URL is dropped, the restored
+/// session already has that tab, passing it again would open a duplicate.
+fn relaunch_args(args: impl Iterator<Item = String>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut args = args;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--profile" | "--theme" => {
+                out.push(arg);
+                out.extend(args.next());
+            }
+            "--screenshot" => {
+                args.next();
+            }
+            flag if flag.starts_with('-') => out.push(arg),
+            _ => {}
         }
     }
+    out
 }
 
 /// Returns Ok(None) when the arguments asked for help or version and there is nothing to run.
@@ -69,6 +102,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<app::Config>,
     let mut profile: Option<PathBuf> = None;
     let mut screenshot = None;
     let mut theme = None;
+    let mut update_check = true;
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -81,6 +115,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<app::Config>,
                 return Ok(None);
             }
             "--no-restore" => restore = false,
+            "--no-update-check" => update_check = false,
             "--profile" => {
                 let dir = args.next().ok_or("--profile needs a directory")?;
                 profile = Some(PathBuf::from(dir));
@@ -115,6 +150,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<app::Config>,
         session_path,
         profile_dir,
         restore,
+        // screenshots are for docs and tests, they should never talk to the network on their own
+        update_check: update_check && screenshot.is_none(),
         screenshot,
         theme,
     }))
@@ -144,6 +181,22 @@ mod tests {
         let c = parse(&["--profile", "/tmp/p"]).unwrap().unwrap();
         assert_eq!(c.profile_dir, Some(PathBuf::from("/tmp/p/profile")));
         assert_eq!(c.session_path, Some(PathBuf::from("/tmp/p/session.json")));
+    }
+
+    #[test]
+    fn relaunch_keeps_options_and_drops_url() {
+        let args = [
+            "--profile",
+            "/p",
+            "servo.org",
+            "--theme",
+            "dark",
+            "--no-restore",
+        ];
+        assert_eq!(
+            relaunch_args(args.iter().map(|s| s.to_string())),
+            ["--profile", "/p", "--theme", "dark", "--no-restore"]
+        );
     }
 
     #[test]

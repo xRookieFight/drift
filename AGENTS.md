@@ -27,6 +27,8 @@ src/
   favicon.rs    favicon pixels to PNG data URLs
   keys.rs       browser shortcuts, checked before input reaches webviews
   keyutils.rs   winit to Servo keyboard event mapping (adapted from servoshell)
+  theme.rs      light/dark from the XDG portal (winit reports nothing on Wayland)
+  updater.rs    GitHub Releases check, verified download and atomic swap
 ui/             sidebar UI, plain HTML/CSS/JS, no framework, embedded at build time
 packaging/      desktop file, icon, release scripts
 scripts/        cargo-in-container.sh
@@ -45,6 +47,10 @@ Every webview (the UI and each visible tab) renders into its own OffscreenRender
 
 UI to core: `fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd)))`. The handler only accepts requests whose target webview is the UI webview, so pages cannot drive the browser. Core to UI: `drift.update(state)` evaluated in the UI webview, at most once per event loop turn.
 
+### Updates
+
+`updater.rs` checks https://api.github.com/repos/xRookieFight/drift/releases at most once a day (state in ~/.local/share/drift/update.json), on a worker thread. An install downloads the tarball (or the AppImage when `$APPIMAGE` is set), verifies it against SHA256SUMS from the same release, writes it next to the target and renames it over. Builds running from a cargo target dir never update themselves. Release asset names are a contract with `packaging/linux/package.sh`: `drift-<version>-x86_64-linux.tar.gz`, `Drift-<version>-x86_64.AppImage`, `SHA256SUMS`. Change both sides together.
+
 ### Known gaps
 
 File and colour pickers are not implemented yet, Servo gets a cancel. Permissions (camera, notifications, geolocation) are denied.
@@ -59,6 +65,7 @@ cargo fmt --all             # format
 cargo clippy --all-targets -- -D warnings
 cargo test --profile local  # shares the local build instead of a 15 GB debug Servo
 packaging/linux/package.sh <version>   # after cargo build --release, writes dist/
+packaging/linux/install.sh [binary]    # per-user install to ~/.local, --uninstall to remove
 ```
 
 Without the -devel packages: `scripts/cargo-in-container.sh build --profile local` builds in the GHCR image, the binary in target/local runs on a Fedora host that has the runtime libs (gstreamer, mesa).
