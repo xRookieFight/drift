@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Added
 
 - Custom title bar: window controls in the top bar, drag and double click to maximize, resize from the edges
@@ -38,5 +40,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+L, Ctrl+R, Ctrl+Tab, Ctrl+Shift+S, Alt+Left/Right, zoom, F11
 - Project scaffold, documentation, CI, release pipeline and build environment image
 
-[Unreleased]: https://github.com/xRookieFight/drift/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/xRookieFight/drift/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/xRookieFight/drift/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/xRookieFight/drift/releases/tag/v0.1.0
