@@ -10,6 +10,7 @@ mod keys;
 mod keyutils;
 mod layout;
 mod omnibox;
+mod picker;
 mod protocol;
 mod session;
 mod tabs;

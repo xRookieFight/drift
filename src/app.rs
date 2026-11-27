@@ -40,6 +40,7 @@ use crate::keys::{self, Action};
 use crate::keyutils::keyboard_event_from_winit;
 use crate::layout::{self, Rect};
 use crate::omnibox;
+use crate::picker::Pickers;
 use crate::protocol::{self, DriftProtocol, NEW_TAB_URL, UiWebViewId};
 use crate::session::{self, Session};
 use crate::tabs::{Side, TabId, Tabs};
@@ -48,6 +49,9 @@ use crate::updater;
 const LINE_HEIGHT: f32 = 76.0;
 /// Grab zone for resizing the undecorated window, in CSS pixels.
 const RESIZE_EDGE: f32 = 5.0;
+/// How close to the left or top edge the pointer has to get to reveal the chrome in compact
+/// mode, in CSS pixels. Wider than the resize zone so both stay usable.
+const REVEAL_EDGE: f32 = 10.0;
 const SESSION_SAVE_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
@@ -128,6 +132,10 @@ struct State {
     ui_ready: bool,
     ui_dirty: bool,
     immersive: bool,
+    /// Sidebar and top bar hidden until the pointer touches the window edge.
+    compact: bool,
+    /// Which edge reveal is currently showing in compact mode, so it fires once per visit.
+    edge: Option<&'static str>,
     /// UI boxes that float above the panes, in window pixels. Set by the UI.
     overlays: Vec<Float>,
     last_session: String,
@@ -140,6 +148,7 @@ struct State {
 struct Running {
     blitter: RefCell<OverlayBlitter>,
     dialogs: RefCell<Dialogs>,
+    pickers: RefCell<Pickers>,
     state: RefCell<State>,
     ui: WebView,
     ui_context: Rc<OffscreenRenderingContext>,
@@ -288,16 +297,13 @@ impl Running {
         log::info!("window {:?} at scale {scale}", window.inner_size());
         let content = layout::content_rect(size.width, size.height, scale);
 
-        let tabs = if config.restore {
-            config
-                .session_path
-                .as_deref()
-                .and_then(Session::load)
-                .map(|s| s.restore())
-                .unwrap_or_default()
-        } else {
-            Tabs::default()
-        };
+        let session = config
+            .session_path
+            .as_deref()
+            .filter(|_| config.restore)
+            .and_then(Session::load);
+        let compact = session.as_ref().is_some_and(|s| s.compact);
+        let tabs = session.map(|s| s.restore()).unwrap_or_default();
 
         let user_content = Rc::new(servo::UserContentManager::new(&servo));
         user_content.add_stylesheet(Rc::new(servo::user_contents::UserStyleSheet::new(
@@ -329,6 +335,7 @@ impl Running {
                 session_path: config.session_path.clone(),
                 blitter: RefCell::new(OverlayBlitter::new(glow)),
                 dialogs: RefCell::new(Dialogs::default()),
+                pickers: RefCell::new(Pickers::default()),
                 state: RefCell::new(State {
                     tabs,
                     views: HashMap::new(),
@@ -343,6 +350,8 @@ impl Running {
                     ui_ready: false,
                     ui_dirty: true,
                     immersive: false,
+                    compact,
+                    edge: None,
                     overlays: Vec::new(),
                     last_session: String::new(),
                     last_session_save: Instant::now(),
@@ -421,6 +430,7 @@ impl Running {
         while let Ok(event) = self.update_events.try_recv() {
             self.handle_update_event(event);
         }
+        self.pickers.borrow_mut().poll();
         self.flush_ui();
         self.save_session(false);
         if self.closing.get() {
@@ -456,6 +466,8 @@ impl Running {
         let mut state = self.state.borrow_mut();
         let content = if state.immersive {
             Rect::new(0, 0, size.width as i32, size.height as i32)
+        } else if state.compact {
+            layout::compact_content_rect(size.width, size.height, scale)
         } else {
             layout::content_rect(size.width, size.height, scale)
         };
@@ -599,6 +611,34 @@ impl Running {
             (_, _, _, true) => ResizeDirection::South,
             _ => return None,
         })
+    }
+
+    /// In compact mode, touching the left or top edge of the window slides the sidebar or
+    /// the top bar in. They float over the page like the address panel does.
+    fn check_compact_edges(&self, x: f64, y: f64) {
+        let (compact, current) = {
+            let state = self.state.borrow();
+            (state.compact, state.edge)
+        };
+        if !compact {
+            return;
+        }
+        let zone = (REVEAL_EDGE * self.scale()) as f64;
+        let edge = if x < zone {
+            Some("sidebar")
+        } else if y < zone {
+            Some("topbar")
+        } else {
+            None
+        };
+        if edge.is_some() && edge != current {
+            self.state.borrow_mut().edge = edge;
+            let which = edge.unwrap_or_default();
+            self.ui.evaluate_javascript(
+                format!("window.drift && window.drift.reveal('{which}')"),
+                |_| {},
+            );
+        }
     }
 
     fn hit_test(&self, x: f64, y: f64) -> Target {
@@ -899,8 +939,20 @@ impl Running {
             self.state.borrow_mut().hover = None;
             return;
         }
+        if capture.is_none() {
+            self.check_compact_edges(x, y);
+        }
         let target = capture.unwrap_or_else(|| self.hit_test(x, y));
         let previous = self.state.borrow_mut().hover.replace(target);
+        // leaving a revealed sidebar or top bar for the page hides it again
+        if previous == Some(Target::Ui)
+            && matches!(target, Target::Pane(_))
+            && self.state.borrow().compact
+        {
+            self.state.borrow_mut().edge = None;
+            self.ui
+                .evaluate_javascript("window.drift && window.drift.reveal(null)", |_| {});
+        }
         if let Some(previous) = previous.filter(|p| *p != target)
             && let Some(webview) = self.webview_for(previous)
         {
@@ -1074,17 +1126,17 @@ impl Running {
             }
             Action::GoToTab(n) => {
                 let id = {
-                    let state = self.state.borrow();
-                    let all = state.tabs.all();
+                    let view = self.state.borrow().tabs.in_view_ids();
                     // Ctrl+9 is always the last tab, like everywhere else
-                    let pick = if n >= 9 { all.last() } else { all.get(n - 1) };
-                    pick.map(|t| t.id)
+                    let pick = if n >= 9 { view.last() } else { view.get(n - 1) };
+                    pick.copied()
                 };
                 if let Some(id) = id {
                     self.handle_command(Command::Activate { id });
                 }
             }
             Action::ShowHistory => self.handle_command(Command::ShowHistory),
+            Action::ToggleCompact => self.handle_command(Command::ToggleCompact),
             Action::CloseTab => {
                 let id = self.state.borrow().tabs.focused();
                 if let Some(id) = id {
@@ -1290,6 +1342,83 @@ impl Running {
                     }
                 }
             }
+            Command::ToggleCompact => {
+                {
+                    let mut state = self.state.borrow_mut();
+                    state.compact = !state.compact;
+                    state.edge = None;
+                }
+                self.sync_views();
+            }
+            Command::SwitchWorkspace { id } => {
+                if self.state.borrow_mut().tabs.switch_workspace(id) {
+                    self.after_workspace_change();
+                }
+            }
+            Command::AddWorkspace { name, icon } => {
+                let id = {
+                    let mut state = self.state.borrow_mut();
+                    let n = state.tabs.workspaces().len() + 1;
+                    let name = if name.trim().is_empty() {
+                        format!("Space {n}")
+                    } else {
+                        name
+                    };
+                    let icon = if icon.trim().is_empty() {
+                        "star".into()
+                    } else {
+                        icon
+                    };
+                    state.tabs.add_workspace(name, icon)
+                };
+                self.state.borrow_mut().tabs.switch_workspace(id);
+                self.after_workspace_change();
+            }
+            Command::RenameWorkspace { id, name, icon } => {
+                self.state
+                    .borrow_mut()
+                    .tabs
+                    .rename_workspace(id, &name, &icon);
+                self.mark_ui_dirty();
+            }
+            Command::RemoveWorkspace { id } => {
+                let doomed = self.state.borrow_mut().tabs.remove_workspace(id);
+                let views: Vec<TabView> = {
+                    let mut state = self.state.borrow_mut();
+                    doomed
+                        .iter()
+                        .filter_map(|t| state.views.remove(t))
+                        .collect()
+                };
+                for view in &views {
+                    self.state
+                        .borrow_mut()
+                        .by_webview
+                        .remove(&view.webview.id());
+                }
+                drop(views);
+                self.after_workspace_change();
+            }
+            Command::PinTab { id, pinned } => {
+                self.state.borrow_mut().tabs.set_pinned(id, pinned);
+                self.mark_ui_dirty();
+            }
+            Command::MoveToWorkspace { id, workspace } => {
+                self.state
+                    .borrow_mut()
+                    .tabs
+                    .move_to_workspace(id, workspace);
+                self.after_workspace_change();
+            }
+            Command::DuplicateTab { id } => {
+                let url = self.state.borrow().tabs.get(id).map(|t| t.url.clone());
+                if let Some(url) = url {
+                    self.state.borrow_mut().tabs.activate(id);
+                    let new = self.state.borrow_mut().tabs.open(url);
+                    self.mark_loading(new);
+                    self.sync_views();
+                }
+            }
             Command::ClearHistory => {
                 self.history.borrow_mut().clear();
                 self.refresh_history_pages();
@@ -1373,7 +1502,7 @@ impl Running {
             if let Some(view) = &view {
                 state.by_webview.remove(&view.webview.id());
             }
-            if state.tabs.is_empty() {
+            if state.tabs.focused().is_none() {
                 state.tabs.open(NEW_TAB_URL);
             }
             view
@@ -1383,6 +1512,20 @@ impl Running {
         drop(removed);
         self.dialogs.borrow_mut().drop_for_tab(id);
         self.sync_views();
+    }
+
+    /// After a workspace switch, removal or a tab moving away: make sure something is on
+    /// screen. An empty workspace gets a new tab page with the address panel open.
+    fn after_workspace_change(self: &Rc<Self>) {
+        let empty = self.state.borrow().tabs.focused().is_none();
+        if empty {
+            self.state.borrow_mut().tabs.open(NEW_TAB_URL);
+        }
+        self.state.borrow_mut().keyboard = Target::Pane(0);
+        self.sync_views();
+        if empty {
+            self.open_panel(false);
+        }
     }
 
     fn send_suggestions(&self, query: &str, seq: u64) {
@@ -1497,6 +1640,9 @@ impl Running {
                 immersive: state.immersive,
                 dialog: dialogs.current(),
                 update: self.update.borrow().clone(),
+                workspaces: state.tabs.workspaces(),
+                current_workspace: state.tabs.current_workspace(),
+                compact: state.compact,
             };
             ui.to_script()
         };
@@ -1524,7 +1670,8 @@ impl Running {
             return;
         }
         state.last_session_save = Instant::now();
-        let session = Session::capture(&state.tabs);
+        let mut session = Session::capture(&state.tabs);
+        session.compact = state.compact;
         let Ok(json) = serde_json::to_string(&session) else {
             return;
         };
@@ -1695,6 +1842,15 @@ impl WebViewDelegate for DelegateProxy {
             .url()
             .and_then(|u| u.host_str().map(str::to_owned))
             .unwrap_or_else(|| "This page".into());
+        let control = match control {
+            EmbedderControl::FilePicker(picker) => {
+                app.pickers
+                    .borrow_mut()
+                    .show(picker, &origin, Box::new(app.waker.clone()));
+                return;
+            }
+            other => other,
+        };
         let offset = {
             let state = app.state.borrow();
             let index = tab.and_then(|id| state.tabs.visible().iter().position(|v| *v == id));
@@ -1717,6 +1873,7 @@ impl WebViewDelegate for DelegateProxy {
     fn hide_embedder_control(&self, _: WebView, control: servo::EmbedderControlId) {
         if let Some(app) = self.app() {
             app.dialogs.borrow_mut().hide(control);
+            app.pickers.borrow_mut().hide(control);
             app.mark_ui_dirty();
         }
     }

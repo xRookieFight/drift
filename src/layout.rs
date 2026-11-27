@@ -106,6 +106,18 @@ pub fn content_rect(window_w: u32, window_h: u32, scale: f32) -> Rect {
     )
 }
 
+/// Compact mode: no sidebar, no top bar, the card fills the window minus the margin.
+pub fn compact_content_rect(window_w: u32, window_h: u32, scale: f32) -> Rect {
+    let margin = (CARD_MARGIN * scale).round() as i32;
+    let (w, h) = (window_w as i32, window_h as i32);
+    Rect::new(
+        margin,
+        margin,
+        (w - 2 * margin).max(1),
+        (h - 2 * margin).max(1),
+    )
+}
+
 /// Splits the content card into one or two panes. `ratio` is the left pane's share.
 pub fn panes(content: Rect, split: Option<f32>, scale: f32) -> Vec<Rect> {
     let Some(ratio) = split else {
@@ -131,6 +143,14 @@ mod tests {
         let c = content_rect(1280, 800, 1.0);
         assert_eq!(c, Rect::new(248, 46, 1280 - 248 - 8, 800 - 46 - 8));
         assert_eq!(panes(c, None, 1.0), vec![c]);
+    }
+
+    #[test]
+    fn compact_card_fills_the_window() {
+        assert_eq!(
+            compact_content_rect(1280, 800, 1.0),
+            Rect::new(8, 8, 1264, 784)
+        );
     }
 
     #[test]

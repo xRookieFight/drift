@@ -22,6 +22,7 @@ pub enum Action {
     /// Ctrl+1 to Ctrl+9, 9 meaning the last tab.
     GoToTab(usize),
     ShowHistory,
+    ToggleCompact,
 }
 
 /// Matches on the physical key (`Code`), so shortcuts stay put on non-QWERTY layouts.
@@ -44,6 +45,8 @@ pub fn shortcut(event: &KeyboardEvent) -> Option<Action> {
         (true, true, false, Code::KeyS) => Action::ToggleSplit,
         (true, true, false, Code::KeyT) => Action::ReopenTab,
         (true, false, false, Code::KeyH) => Action::ShowHistory,
+        // Zen's shortcut for compact mode
+        (true, false, true, Code::KeyC) => Action::ToggleCompact,
         (true, false, false, Code::Digit1) => Action::GoToTab(1),
         (true, false, false, Code::Digit2) => Action::GoToTab(2),
         (true, false, false, Code::Digit3) => Action::GoToTab(3),

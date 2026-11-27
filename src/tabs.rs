@@ -1,11 +1,18 @@
-//! Tab list, selection and split view state. Knows nothing about Servo, the app keeps the
-//! WebView for each tab in a map keyed by TabId and creates them lazily when a tab is shown.
+//! Tab list, workspaces, essentials, selection and split view state. Knows nothing about
+//! Servo, the app keeps the WebView for each tab in a map keyed by TabId and creates them
+//! lazily when a tab is shown.
+//!
+//! Every tab belongs to a workspace and only the current workspace's tabs are in view.
+//! Pinned tabs are the exception: they are "essentials", shown in every workspace.
+
+use std::collections::HashMap;
 
 use serde::Serialize;
 
 use crate::layout::clamp_ratio;
 
 pub type TabId = u64;
+pub type WorkspaceId = u64;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Tab {
@@ -15,6 +22,18 @@ pub struct Tab {
     pub loading: bool,
     /// data: URL of the favicon, ready for an <img src>.
     pub favicon: Option<String>,
+    /// Essentials: shown as tiles above the tab list, in every workspace.
+    pub pinned: bool,
+    pub workspace: WorkspaceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Workspace {
+    pub id: WorkspaceId,
+    pub name: String,
+    /// Name of one of the UI's workspace icons (ui/app.js WORKSPACE_ICONS). Unknown names
+    /// fall back to the workspace's first letter.
+    pub icon: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
@@ -45,15 +64,66 @@ impl Split {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Tabs {
     tabs: Vec<Tab>,
     active: Option<TabId>,
     split: Option<Split>,
     next_id: TabId,
+    workspaces: Vec<Workspace>,
+    current: WorkspaceId,
+    /// What each workspace had in front when we left it.
+    remembered: HashMap<WorkspaceId, TabId>,
+}
+
+impl Default for Tabs {
+    fn default() -> Self {
+        Tabs {
+            tabs: Vec::new(),
+            active: None,
+            split: None,
+            next_id: 0,
+            workspaces: vec![Workspace {
+                id: 1,
+                name: "Home".into(),
+                icon: "home".into(),
+            }],
+            current: 1,
+            remembered: HashMap::new(),
+        }
+    }
 }
 
 impl Tabs {
+    pub fn workspaces(&self) -> &[Workspace] {
+        &self.workspaces
+    }
+
+    pub fn current_workspace(&self) -> WorkspaceId {
+        self.current
+    }
+
+    fn in_view(&self, tab: &Tab) -> bool {
+        tab.pinned || tab.workspace == self.current
+    }
+
+    /// Ids of the tabs the sidebar shows right now, in list order.
+    pub fn in_view_ids(&self) -> Vec<TabId> {
+        self.tabs
+            .iter()
+            .filter(|t| self.in_view(t))
+            .map(|t| t.id)
+            .collect()
+    }
+
+    /// Whether the current workspace has nothing open (essentials don't count).
+    #[cfg(test)]
+    pub fn workspace_is_empty(&self) -> bool {
+        !self
+            .tabs
+            .iter()
+            .any(|t| !t.pinned && t.workspace == self.current)
+    }
     pub fn all(&self) -> &[Tab] {
         &self.tabs
     }
@@ -120,12 +190,17 @@ impl Tabs {
             url,
             loading: false,
             favicon: None,
+            pinned: false,
+            workspace: self.current,
         };
-        let at = self
+        // right after the focused tab, unless that is an essential: new tabs never land in
+        // the essentials block
+        let after_focused = self
             .focused()
+            .and_then(|f| self.get(f).filter(|t| !t.pinned).map(|_| f))
             .and_then(|f| self.index_of(f))
-            .map(|i| i + 1)
-            .unwrap_or(self.tabs.len());
+            .map(|i| i + 1);
+        let at = after_focused.unwrap_or(self.tabs.len());
         self.tabs.insert(at, tab);
         id
     }
@@ -133,8 +208,14 @@ impl Tabs {
     /// Shows a tab. Picking one half of the split just moves focus there, picking any other
     /// tab leaves split view, the same way Zen does it.
     pub fn activate(&mut self, id: TabId) -> bool {
-        if self.get(id).is_none() {
+        let Some(tab) = self.get(id) else {
             return false;
+        };
+        // a tab from another workspace (say, reopened or found in history) takes us there
+        if !tab.pinned && tab.workspace != self.current {
+            let ws = tab.workspace;
+            self.leave_workspace();
+            self.current = ws;
         }
         if let Some(split) = &mut self.split {
             if split.contains(id) {
@@ -156,6 +237,16 @@ impl Tabs {
     pub fn close(&mut self, id: TabId) -> Option<Tab> {
         let index = self.index_of(id)?;
         let was_focused = self.focused() == Some(id);
+        // neighbours are judged by what the sidebar shows, not the hidden workspaces around
+        let view = self.in_view_ids();
+        let pos = view.iter().position(|v| *v == id);
+        let neighbour = pos
+            .and_then(|p| {
+                view.get(p + 1)
+                    .or_else(|| p.checked_sub(1).and_then(|q| view.get(q)))
+            })
+            .copied();
+        self.remembered.retain(|_, t| *t != id);
 
         if let Some(split) = self.split.filter(|s| s.contains(id)) {
             let other = if split.left == id {
@@ -168,28 +259,28 @@ impl Tabs {
         }
 
         let tab = self.tabs.remove(index);
-        if self.tabs.is_empty() {
-            self.active = None;
-        } else if was_focused && self.split.is_none() && self.active == Some(id) {
-            let next = index.min(self.tabs.len() - 1);
-            self.active = Some(self.tabs[next].id);
+        if was_focused && self.split.is_none() && self.active == Some(id) {
+            self.active = neighbour;
         }
         Some(tab)
     }
 
     /// Ctrl+Tab and friends. Wraps around.
     pub fn cycle(&mut self, forward: bool) {
-        let Some(current) = self.focused().and_then(|f| self.index_of(f)) else {
+        let view = self.in_view_ids();
+        let Some(current) = self
+            .focused()
+            .and_then(|f| view.iter().position(|v| *v == f))
+        else {
             return;
         };
-        let n = self.tabs.len();
+        let n = view.len();
         let next = if forward {
             (current + 1) % n
         } else {
             (current + n - 1) % n
         };
-        let id = self.tabs[next].id;
-        self.activate(id);
+        self.activate(view[next]);
     }
 
     /// Puts `other` next to the focused tab. The focused tab stays on the left.
@@ -221,11 +312,150 @@ impl Tabs {
     /// Best partner for a fresh split: the next tab, or the previous one at the end of the list.
     pub fn split_candidate(&self) -> Option<TabId> {
         let focused = self.focused()?;
-        let i = self.index_of(focused)?;
-        self.tabs
-            .get(i + 1)
-            .or_else(|| i.checked_sub(1).and_then(|p| self.tabs.get(p)))
+        let view = self.in_view_ids();
+        let i = view.iter().position(|v| *v == focused)?;
+        view.get(i + 1)
+            .or_else(|| i.checked_sub(1).and_then(|p| view.get(p)))
+            .copied()
+    }
+
+    // ---- workspaces -----------------------------------------------------------------------
+
+    fn leave_workspace(&mut self) {
+        self.split = None;
+        if let Some(active) = self.active
+            && self.get(active).is_some_and(|t| !t.pinned)
+        {
+            self.remembered.insert(self.current, active);
+        }
+        self.active = None;
+    }
+
+    /// Switches workspace and brings back what was in front there. Returns false for an
+    /// unknown id. The workspace may come back empty, the caller decides what to show then.
+    pub fn switch_workspace(&mut self, id: WorkspaceId) -> bool {
+        if !self.workspaces.iter().any(|w| w.id == id) {
+            return false;
+        }
+        if id == self.current {
+            return true;
+        }
+        self.leave_workspace();
+        self.current = id;
+        let back = self
+            .remembered
+            .get(&id)
+            .copied()
+            .filter(|t| self.get(*t).is_some())
+            .or_else(|| {
+                self.tabs
+                    .iter()
+                    .find(|t| !t.pinned && t.workspace == id)
+                    .map(|t| t.id)
+            });
+        self.active = back;
+        true
+    }
+
+    pub fn add_workspace(
+        &mut self,
+        name: impl Into<String>,
+        icon: impl Into<String>,
+    ) -> WorkspaceId {
+        let id = self.workspaces.iter().map(|w| w.id).max().unwrap_or(0) + 1;
+        self.workspaces.push(Workspace {
+            id,
+            name: name.into(),
+            icon: icon.into(),
+        });
+        id
+    }
+
+    pub fn rename_workspace(&mut self, id: WorkspaceId, name: &str, icon: &str) {
+        if let Some(w) = self.workspaces.iter_mut().find(|w| w.id == id) {
+            if !name.trim().is_empty() {
+                w.name = name.trim().to_owned();
+            }
+            if !icon.trim().is_empty() {
+                w.icon = icon.trim().to_owned();
+            }
+        }
+    }
+
+    /// Deletes a workspace and returns the ids of its tabs, which are closed with it. The last
+    /// workspace stays, there is always somewhere to be.
+    pub fn remove_workspace(&mut self, id: WorkspaceId) -> Vec<TabId> {
+        if self.workspaces.len() <= 1 || !self.workspaces.iter().any(|w| w.id == id) {
+            return Vec::new();
+        }
+        let doomed: Vec<TabId> = self
+            .tabs
+            .iter()
+            .filter(|t| !t.pinned && t.workspace == id)
             .map(|t| t.id)
+            .collect();
+        if self.current == id {
+            let other = self.workspaces.iter().find(|w| w.id != id).map(|w| w.id);
+            if let Some(other) = other {
+                self.switch_workspace(other);
+            }
+        }
+        self.tabs.retain(|t| !doomed.contains(&t.id));
+        self.workspaces.retain(|w| w.id != id);
+        self.remembered.remove(&id);
+        doomed
+    }
+
+    pub fn move_to_workspace(&mut self, tab: TabId, ws: WorkspaceId) {
+        if !self.workspaces.iter().any(|w| w.id == ws) {
+            return;
+        }
+        let leaving_view = ws != self.current && self.get(tab).is_some_and(|t| !t.pinned);
+        if leaving_view && self.visible().contains(&tab) {
+            let view = self.in_view_ids();
+            let pos = view.iter().position(|v| *v == tab);
+            let neighbour = pos
+                .and_then(|p| {
+                    view.get(p + 1)
+                        .or_else(|| p.checked_sub(1).and_then(|q| view.get(q)))
+                })
+                .copied();
+            self.split = None;
+            self.active = neighbour;
+        }
+        if let Some(t) = self.get_mut(tab) {
+            t.workspace = ws;
+            t.pinned = false;
+        }
+    }
+
+    // ---- essentials -----------------------------------------------------------------------
+
+    /// Pins or unpins a tab. Essentials live in one block at the front of the list, so the
+    /// sidebar can draw them as a grid; an unpinned tab joins the current workspace.
+    pub fn set_pinned(&mut self, id: TabId, pinned: bool) {
+        let Some(from) = self.index_of(id) else {
+            return;
+        };
+        let mut tab = self.tabs.remove(from);
+        tab.pinned = pinned;
+        if !pinned {
+            tab.workspace = self.current;
+        }
+        let block_end = self.tabs.iter().take_while(|t| t.pinned).count();
+        self.tabs.insert(block_end, tab);
+    }
+
+    /// Restores workspaces from a session. Keeps the default if the list is empty.
+    pub fn restore_workspaces(&mut self, workspaces: Vec<Workspace>, current: WorkspaceId) {
+        if !workspaces.is_empty() {
+            self.workspaces = workspaces;
+        }
+        if self.workspaces.iter().any(|w| w.id == current) {
+            self.current = current;
+        } else {
+            self.current = self.workspaces[0].id;
+        }
     }
 
     pub fn set_ratio(&mut self, ratio: f32) {
@@ -241,13 +471,30 @@ impl Tabs {
         }
     }
 
-    /// Moves a tab to a new position in the list, for drag and drop in the sidebar.
+    /// Drag and drop in the sidebar. `to` is a position in the list the sidebar shows (this
+    /// workspace's tabs, essentials excluded), not in the full list behind it.
     pub fn move_tab(&mut self, id: TabId, to: usize) {
-        if let Some(from) = self.index_of(id) {
-            let tab = self.tabs.remove(from);
-            let to = to.min(self.tabs.len());
-            self.tabs.insert(to, tab);
+        let Some(from) = self.index_of(id) else {
+            return;
+        };
+        if self.tabs[from].pinned {
+            return;
         }
+        let tab = self.tabs.remove(from);
+        let shown: Vec<TabId> = self
+            .tabs
+            .iter()
+            .filter(|t| !t.pinned && t.workspace == self.current)
+            .map(|t| t.id)
+            .collect();
+        let at = match shown.get(to) {
+            Some(before) => self.index_of(*before).unwrap_or(self.tabs.len()),
+            None => shown
+                .last()
+                .and_then(|last| self.index_of(*last))
+                .map_or(self.tabs.len(), |i| i + 1),
+        };
+        self.tabs.insert(at, tab);
     }
 
     /// Restores a split by list positions, used by the session loader.
@@ -393,5 +640,113 @@ mod tests {
         t.move_tab(c, 99);
         let ids: Vec<_> = t.all().iter().map(|t| t.id).collect();
         assert_eq!(ids, vec![a, b, c]);
+    }
+
+    #[test]
+    fn workspaces_keep_their_own_tabs() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let work = t.add_workspace("Work", "briefcase");
+        assert!(t.switch_workspace(work));
+        assert!(t.workspace_is_empty());
+        assert_eq!(t.focused(), None);
+        let w = t.open("w");
+        assert_eq!(t.in_view_ids(), vec![w]);
+
+        t.switch_workspace(1);
+        assert_eq!(t.focused(), Some(a));
+        assert_eq!(t.in_view_ids(), vec![a]);
+        t.switch_workspace(work);
+        assert_eq!(t.focused(), Some(w));
+    }
+
+    #[test]
+    fn essentials_show_everywhere_and_stay_in_front() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let b = t.open("b");
+        t.set_pinned(b, true);
+        assert_eq!(t.all()[0].id, b);
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        assert_eq!(t.in_view_ids(), vec![b]);
+        // a new tab opened while an essential is focused goes after the block, not into it
+        t.activate(b);
+        let c = t.open("c");
+        assert!(!t.get(c).unwrap().pinned);
+        assert_eq!(t.get(c).unwrap().workspace, work);
+        t.set_pinned(b, false);
+        assert_eq!(t.get(b).unwrap().workspace, work);
+        let _ = a;
+    }
+
+    #[test]
+    fn activating_a_tab_elsewhere_switches_workspace() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        t.activate(a);
+        assert_eq!(t.current_workspace(), 1);
+        assert_eq!(t.focused(), Some(a));
+    }
+
+    #[test]
+    fn closing_last_tab_in_workspace_leaves_nothing_focused() {
+        let mut t = Tabs::default();
+        let _a = t.open("a");
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        let w = t.open("w");
+        t.close(w);
+        // the other workspace's tab must not jump in here
+        assert_eq!(t.focused(), None);
+        assert!(t.workspace_is_empty());
+    }
+
+    #[test]
+    fn removing_a_workspace_closes_its_tabs() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        let w = t.open("w");
+        assert_eq!(t.remove_workspace(work), vec![w]);
+        assert_eq!(t.current_workspace(), 1);
+        assert_eq!(t.focused(), Some(a));
+        // the last one stays
+        assert!(t.remove_workspace(1).is_empty());
+        assert_eq!(t.workspaces().len(), 1);
+    }
+
+    #[test]
+    fn move_to_workspace_hands_focus_to_a_neighbour() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let b = t.open("b");
+        let work = t.add_workspace("Work", "briefcase");
+        t.move_to_workspace(b, work);
+        assert_eq!(t.focused(), Some(a));
+        assert_eq!(t.in_view_ids(), vec![a]);
+    }
+
+    #[test]
+    fn move_tab_counts_only_what_the_sidebar_shows() {
+        let mut t = Tabs::default();
+        let a = t.open("a");
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        let x = t.open("x");
+        let y = t.open("y");
+        t.switch_workspace(1);
+        let b = t.open("b");
+        let c = t.open("c");
+        // c to the top of this workspace's list, past nothing from Work
+        t.move_tab(c, 0);
+        assert_eq!(t.in_view_ids(), vec![c, a, b]);
+        t.move_tab(c, 9);
+        assert_eq!(t.in_view_ids(), vec![a, b, c]);
+        t.switch_workspace(work);
+        assert_eq!(t.in_view_ids(), vec![x, y]);
     }
 }

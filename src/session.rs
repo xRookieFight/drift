@@ -6,9 +6,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::tabs::Tabs;
+use crate::tabs::{Tabs, Workspace, WorkspaceId};
 
-const VERSION: u32 = 1;
+/// Version 2 added workspaces and essentials. Version 1 files still load, their tabs land in
+/// the default workspace.
+const VERSION: u32 = 2;
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Session {
@@ -16,6 +18,13 @@ pub struct Session {
     pub tabs: Vec<SavedTab>,
     pub active: usize,
     pub split: Option<SavedSplit>,
+    #[serde(default)]
+    pub workspaces: Vec<SavedWorkspace>,
+    #[serde(default)]
+    pub current_workspace: WorkspaceId,
+    /// Compact mode was on.
+    #[serde(default)]
+    pub compact: bool,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -23,6 +32,24 @@ pub struct SavedTab {
     pub url: String,
     #[serde(default)]
     pub title: String,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default = "default_workspace")]
+    pub workspace: WorkspaceId,
+    /// Kept so restored tabs show their icon before their page is loaded again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favicon: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedWorkspace {
+    pub id: WorkspaceId,
+    pub name: String,
+    pub icon: String,
+}
+
+fn default_workspace() -> WorkspaceId {
+    1
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -43,6 +70,9 @@ impl Session {
                 .map(|t| SavedTab {
                     url: t.url.clone(),
                     title: t.title.clone(),
+                    pinned: t.pinned,
+                    workspace: t.workspace,
+                    favicon: t.favicon.clone(),
                 })
                 .collect(),
             active: tabs.focused().and_then(pos).unwrap_or(0),
@@ -53,18 +83,49 @@ impl Session {
                     ratio: s.ratio,
                 })
             }),
+            workspaces: tabs
+                .workspaces()
+                .iter()
+                .map(|w| SavedWorkspace {
+                    id: w.id,
+                    name: w.name.clone(),
+                    icon: w.icon.clone(),
+                })
+                .collect(),
+            current_workspace: tabs.current_workspace(),
+            compact: false,
         }
     }
 
     /// Rebuilds the tab list. Webviews are created later, only for tabs that get shown.
     pub fn restore(&self) -> Tabs {
         let mut tabs = Tabs::default();
+        tabs.restore_workspaces(
+            self.workspaces
+                .iter()
+                .map(|w| Workspace {
+                    id: w.id,
+                    name: w.name.clone(),
+                    icon: w.icon.clone(),
+                })
+                .collect(),
+            self.current_workspace,
+        );
+        let known: Vec<WorkspaceId> = tabs.workspaces().iter().map(|w| w.id).collect();
         let mut ids = Vec::with_capacity(self.tabs.len());
         for saved in &self.tabs {
             // open_in_background inserts after the focused tab, nothing is focused yet so it appends
             let id = tabs.open_in_background(saved.url.clone());
             if let Some(tab) = tabs.get_mut(id) {
                 tab.title = saved.title.clone();
+                tab.pinned = saved.pinned;
+                tab.favicon = saved.favicon.clone();
+                // a tab whose workspace vanished from the file still has to live somewhere
+                tab.workspace = if known.contains(&saved.workspace) {
+                    saved.workspace
+                } else {
+                    known[0]
+                };
             }
             ids.push(id);
         }
@@ -80,7 +141,9 @@ impl Session {
     pub fn load(path: &Path) -> Option<Self> {
         let text = fs::read_to_string(path).ok()?;
         match serde_json::from_str::<Session>(&text) {
-            Ok(session) if session.version == VERSION && !session.tabs.is_empty() => Some(session),
+            Ok(session) if (1..=VERSION).contains(&session.version) && !session.tabs.is_empty() => {
+                Some(session)
+            }
             Ok(_) => None,
             Err(err) => {
                 log::warn!("ignoring unreadable session file {}: {err}", path.display());
@@ -174,6 +237,9 @@ mod tests {
             tabs: vec![SavedTab {
                 url: "https://a.example/".into(),
                 title: String::new(),
+                pinned: false,
+                workspace: 9,
+                favicon: None,
             }],
             active: 7,
             split: Some(SavedSplit {
@@ -181,10 +247,60 @@ mod tests {
                 right: 5,
                 ratio: 0.5,
             }),
+            ..Default::default()
         };
         let tabs = session.restore();
         assert_eq!(tabs.len(), 1);
         assert!(tabs.split().is_none());
         assert!(tabs.focused().is_some());
+        // workspace 9 does not exist, the tab falls back to the default one
+        assert_eq!(tabs.all()[0].workspace, tabs.workspaces()[0].id);
+    }
+
+    #[test]
+    fn version_one_files_still_load() {
+        let dir = std::env::temp_dir().join(format!("drift-session-v1-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("session.json");
+        fs::write(
+            &path,
+            r#"{"version":1,"tabs":[{"url":"https://a.example/","title":"A"}],"active":0,"split":null}"#,
+        )
+        .unwrap();
+        let tabs = Session::load(&path).unwrap().restore();
+        assert_eq!(tabs.len(), 1);
+        assert!(!tabs.all()[0].pinned);
+        assert_eq!(tabs.workspaces().len(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn workspaces_and_essentials_round_trip() {
+        let mut t = Tabs::default();
+        let mail = t.open("https://mail.example/");
+        t.set_pinned(mail, true);
+        let _home = t.open("https://home.example/");
+        let work = t.add_workspace("Work", "briefcase");
+        t.switch_workspace(work);
+        let doc = t.open("https://docs.example/");
+
+        let restored = Session::capture(&t).restore();
+        assert_eq!(restored.workspaces().len(), 2);
+        assert_eq!(restored.current_workspace(), work);
+        assert_eq!(
+            restored.focused(),
+            restored
+                .all()
+                .iter()
+                .find(|x| x.url.contains("docs"))
+                .map(|x| x.id)
+        );
+        assert!(
+            restored
+                .all()
+                .iter()
+                .any(|x| x.pinned && x.url.contains("mail"))
+        );
+        let _ = doc;
     }
 }

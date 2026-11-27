@@ -8,6 +8,8 @@
 <body>
   <aside id="sidebar">
     <div id="sidebar-head" class="drag"></div>
+    <div id="essentials"></div>
+    <div id="workspace-title"><span class="ws-icon"></span><span class="ws-name"></span></div>
     <ul id="tabs"></ul>
     <div id="update" hidden>
       <div class="update-text"></div>
@@ -17,6 +19,7 @@
       </div>
     </div>
     <button id="new-tab" class="wide"><span class="glyph"></span><span>New Tab</span></button>
+    <div id="workspaces"></div>
   </aside>
 
   <header id="topbar" class="drag">
@@ -31,6 +34,7 @@
       <span id="url-text"></span>
     </div>
     <button id="split" class="icon" title="Split view (Ctrl+Shift+S)"></button>
+    <button id="compact" class="icon" title="Compact mode (Ctrl+Alt+C)"></button>
     <div id="window-controls">
       <button id="win-min" class="icon" title="Minimize"></button>
       <button id="win-max" class="icon" title="Maximize"></button>
@@ -51,6 +55,8 @@
     </div>
     <ul id="suggestions"></ul>
   </div>
+
+  <div id="menu" hidden></div>
 
   <div id="overlay" hidden>
     <div id="dialog"></div>

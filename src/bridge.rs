@@ -10,7 +10,7 @@ use servo::WebViewId;
 use crate::compositor::FloatSpec;
 use crate::dialogs::DialogView;
 use crate::layout::CssRect;
-use crate::tabs::{Side, Tab, TabId};
+use crate::tabs::{Side, Tab, TabId, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -85,6 +85,37 @@ pub enum Command {
         url: String,
     },
     ShowHistory,
+    /// Sidebar and top bar hide until the pointer touches the window edge.
+    ToggleCompact,
+    SwitchWorkspace {
+        id: WorkspaceId,
+    },
+    AddWorkspace {
+        #[serde(default)]
+        name: String,
+        #[serde(default)]
+        icon: String,
+    },
+    RenameWorkspace {
+        id: WorkspaceId,
+        name: String,
+        icon: String,
+    },
+    RemoveWorkspace {
+        id: WorkspaceId,
+    },
+    /// Make a tab an essential (shown in every workspace) or a normal tab again.
+    PinTab {
+        id: TabId,
+        pinned: bool,
+    },
+    MoveToWorkspace {
+        id: TabId,
+        workspace: WorkspaceId,
+    },
+    DuplicateTab {
+        id: TabId,
+    },
 }
 
 /// Who sent a bridge command.
@@ -167,6 +198,9 @@ pub struct UiState<'a> {
     pub dialog: Option<DialogView>,
     /// A newer release, and how far installing it got.
     pub update: Option<UpdateView>,
+    pub workspaces: &'a [Workspace],
+    pub current_workspace: WorkspaceId,
+    pub compact: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
