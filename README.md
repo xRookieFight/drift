@@ -19,7 +19,7 @@
 Drift is a browser that tries to get out of your way. Tabs live in a quiet sidebar, pages sit on a soft rounded card, and two tabs can share the window in split view. The whole interface is plain HTML and CSS drawn by Servo itself, so theming it is just writing CSS.
 
 > [!WARNING]
-> Drift is young and so is Servo. Many sites work well, some render incorrectly or not at all, and file uploads are not supported yet. Please report broken sites with the site compatibility template.
+> Drift is young and so is Servo. Many sites work well, some render incorrectly or not at all. Please report broken sites with the site compatibility template.
 
 ## Showcase
 
@@ -40,6 +40,9 @@ Captured from the real app with `drift --screenshot`. The black squares on Wikip
 - Address bar and navigation in a slim top bar, with its own window controls
 - A floating address panel with history suggestions and site name completion
 - History page with search
+- Workspaces and essentials (pinned tabs shown in every workspace)
+- Compact mode that hides the chrome until you reach for it
+- File uploads through your desktop's own file chooser
 - Light and dark themes that follow the system
 - Session restore
 - Built in updates from GitHub Releases, verified before they are installed
@@ -87,14 +90,12 @@ target/local/drift
 
 ## Roadmap
 
-| Version | Focus |
-|---------|-------|
-| 0.1 | Sidebar tabs, split view, theming, session restore |
-| 0.2 | Workspaces |
-| 0.3 | Compact mode |
-| 0.4 | Essentials and pinned sites |
-| 0.5 | History and downloads UI |
-| later | Flatpak |
+| Version | Focus | |
+|---------|-------|---|
+| 0.1 | Sidebar tabs, split view, theming, session restore, updates | done |
+| 0.2 | Custom title bar, floating address panel, history | done |
+| 0.3 | Workspaces, essentials, compact mode, file uploads | done |
+| next | Downloads (waiting on a Servo API), Flatpak | |
 
 ## Contributing
 

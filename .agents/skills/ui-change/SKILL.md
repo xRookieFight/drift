@@ -11,6 +11,9 @@ description: Change the browser chrome (sidebar, tabs, split view visuals, theme
 - Data flow: the core pushes state with `drift.update(state)` (see `src/bridge.rs` for the message shapes). The UI sends commands with `fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd)))`. When adding a command, add it on both sides and keep the JSON shape documented in `bridge.rs`.
 - Layout of the content webviews is computed in `src/layout.rs`: SIDEBAR_WIDTH, TOOLBAR_HEIGHT, CARD_MARGIN and SPLIT_GAP. The same numbers live in ui/style.css (--sidebar-width, --toolbar-height, --card-margin) and ui/app.js (SPLIT_GAP). Change all of them together or the pages will not line up with the drawn card.
 - Never make the UI wait for page content.
+- Icons are inline SVG with `stroke="currentColor"`, but Servo rasterizes SVG without the surrounding CSS, so `paintIcons()` in ui/app.js writes the real colour into each icon. Call it after inserting new icons outside `render()`.
+- Stacking: card and split decorations at the bottom, sidebar and top bar above (compact mode puts the card under them), floating UI on top. See the z-index block in style.css.
+- Servo cannot draw colour emoji, use SVG icons instead.
 - The UI is drawn under the pages. Anything that must show over a page (panels, popups, dialogs) has to be added to `reportFloats()` in ui/app.js with its radius, shadow and scrim, the core then composites that box over the page and routes its input to the UI. Keep floating boxes small, each one is read back from the GPU every frame while it is open.
 - To check a floating box without clicking around, use `DRIFT_DEBUG_UI_JS` with `--screenshot`, see AGENTS.md.
 - Verify by running the app in light and dark mode. Servo's CSS support is not Firefox's: no backdrop-filter, and animations can leave their last frame behind when a class is removed, so toggle visibility with display.

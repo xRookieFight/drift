@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Workspaces: separate sets of tabs, switcher at the bottom of the sidebar, rename, icons and delete from the right click menu
+- Essentials: pin a tab to keep it as a tile above the tab list in every workspace
+- Compact mode (Ctrl+Alt+C or the top bar button): sidebar and top bar slide in from the window edge
+- File uploads through the desktop's own file chooser
+- Right click menu on tabs: essentials, duplicate, split view, move to another workspace, close
+- Restored tabs show their favicon right away
+
+### Fixed
+
+- Icons in the top bar were black in the dark theme
+
 ## [0.2.0] - 2026-11-27
 
 ### Added

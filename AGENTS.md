@@ -17,7 +17,7 @@ src/
   main.rs       entry, CLI args (--no-restore, --profile DIR, URL)
   app.rs        winit event loop, owns Servo, the window and all webviews, routes input,
                 composites the frame, implements WebViewDelegate (through DelegateProxy)
-  tabs.rs       Tab list, focus and split state (pure, unit tested)
+  tabs.rs       Tabs, workspaces, essentials, focus and split state (pure, unit tested)
   layout.rs     rect math: sidebar, content card, split panes (pure, unit tested)
   bridge.rs     JSON messages between UI and core (Command, UiState)
   protocol.rs   drift:// scheme: embedded ui/ assets and the bridge endpoint
@@ -30,6 +30,7 @@ src/
   theme.rs      light/dark from the XDG portal (winit reports nothing on Wayland)
   compositor.rs mixes floating UI boxes (panel, dialogs, menus) over the pages on the CPU
   history.rs    visit history, frecency suggestions and inline site completion
+  picker.rs     <input type=file> through the XDG portal file chooser (rfd), on a worker thread
   content.css   user stylesheet injected into every page (focus ring fix)
   updater.rs    GitHub Releases check, verified download and atomic swap
 ui/             sidebar UI, plain HTML/CSS/JS, no framework, embedded at build time
@@ -45,6 +46,14 @@ Every webview (the UI and each visible tab) renders into its own OffscreenRender
 ### Floating UI
 
 The UI webview is drawn *under* the pages, so anything that must cover a page (the address panel, page dialogs, select popups, context menus) is reported by the UI with `set_overlays` as a list of boxes (rect, radius, shadow, scrim). Each frame `Running::paint_overlays` reads that region back from the window and from the UI framebuffer and `compositor::composite` mixes them: rounded corners and the shadow show the live page, the scrim dims it. Input inside a reported box goes to the UI. New floating UI must report its box in `reportFloats()` in ui/app.js, nothing else is needed on the Rust side.
+
+### Workspaces and essentials
+
+Every tab has a workspace; only the current workspace's tabs are in view (`Tabs::in_view_ids`). Pinned tabs are essentials: shown as tiles in every workspace and kept in one block at the front of the list. Sidebar positions sent by the UI (drag and drop) are positions in what the sidebar shows, never in the full list. Session files are version 2; version 1 files still load into the default workspace.
+
+### Compact mode
+
+Ctrl+Alt+C or the top bar button hides sidebar and top bar and gives the card the whole window. `Running::check_compact_edges` calls `drift.reveal('sidebar' | 'topbar')` when the pointer touches the left or top edge, and `drift.reveal(null)` when it moves back onto a page. The revealed chrome is a floating box like any other.
 
 ### Window chrome
 
@@ -64,7 +73,7 @@ UI to core: `fetch("drift://ui/bridge?" + encodeURIComponent(JSON.stringify(cmd)
 
 ### Known gaps
 
-File and colour pickers are not implemented yet, Servo gets a cancel. Permissions (camera, notifications, geolocation) are denied.
+Colour pickers are not implemented, Servo gets a cancel. Permissions (camera, notifications, geolocation) are denied. Servo 0.8 has no download API, so there is no downloads UI.
 
 ## Commands
 
